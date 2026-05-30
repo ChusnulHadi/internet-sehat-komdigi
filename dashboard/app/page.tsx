@@ -301,6 +301,18 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Footer */}
+      <div className="mt-6 text-center text-xs text-muted-foreground">
+        <a
+          href="https://www.cloudman.id"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-foreground transition-colors"
+        >
+          www.cloudman.id
+        </a>
+      </div>
     </div>
   );
 }
