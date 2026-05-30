@@ -29,6 +29,10 @@ blocklist/
 logs/
 *.log
 
+# ── AI context ───────────────────────────────────────────────
+CLAUDE.md
+CONTEXT.md
+
 # ── OS / editor ──────────────────────────────────────────────
 .DS_Store
 Thumbs.db
