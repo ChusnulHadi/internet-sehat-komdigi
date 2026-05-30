@@ -38,24 +38,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$SCRIPT_DIR/dns/dnsdist.conf" ]] || \
   die "Jalankan dari root project (direktori yang berisi dns/dnsdist.conf)"
 
-# --rebuild-dashboard: buang build lama supaya step instalasi rebuild dari awal
-if $REBUILD_DASHBOARD; then
-  rm -rf "$SCRIPT_DIR/dashboard/.next"
-  ok "Build dashboard lama dihapus — akan di-build ulang saat instalasi"
-fi
-
 # Deteksi sumber dashboard:
 #   zip installer  → dashboard/server.js (standalone sudah di-flatten oleh create-installer.sh)
 #   git clone      → dashboard/.next/standalone/server.js (perlu build dulu)
 DASHBOARD_SRC=""
-if [[ -f "$SCRIPT_DIR/dashboard/server.js" ]]; then
+if $REBUILD_DASHBOARD; then
+  ok "--rebuild-dashboard: akan jalankan npm run build ulang"
+elif [[ -f "$SCRIPT_DIR/dashboard/server.js" ]]; then
   DASHBOARD_SRC="$SCRIPT_DIR/dashboard"
 elif [[ -f "$SCRIPT_DIR/dashboard/.next/standalone/server.js" ]]; then
   DASHBOARD_SRC="$SCRIPT_DIR/dashboard/.next/standalone"
 elif [[ ! -d "$SCRIPT_DIR/dashboard" ]]; then
   die "Direktori dashboard tidak ditemukan"
 fi
-# Kalau DASHBOARD_SRC masih kosong, dashboard belum di-build — akan di-build saat instalasi
+# Kalau DASHBOARD_SRC masih kosong, dashboard akan di-build saat instalasi
 
 command -v whiptail &>/dev/null || die "whiptail tidak ditemukan. Install: apt-get install whiptail"
 
@@ -325,15 +321,17 @@ trap cleanup EXIT
   ln -sf "$LIB_DIR/rpz2cdb.py"  /usr/local/bin/rpz2cdb
   ln -sf "$LIB_DIR/rpz-sync.py" /usr/local/bin/rpz-sync
 
-  # ── 3b. Build dashboard jika belum ada (git clone tanpa create-installer.sh) ──
+  # ── 3b. Build dashboard jika belum ada atau --rebuild-dashboard ──
   _DASH_SRC="$DASHBOARD_SRC"
   if [[ -z "$_DASH_SRC" ]]; then
-    echo "XXX"; echo "32"; echo "Build dashboard (npm ci)..."; echo "XXX"
-    (cd "$SCRIPT_DIR/dashboard" && npm ci --prefer-offline 2>>"$TMPERR") || \
-    (cd "$SCRIPT_DIR/dashboard" && npm ci 2>>"$TMPERR") || \
-      { echo "INSTALL_FAILED" > "$TMPSYNC"; }
+    if ! $REBUILD_DASHBOARD; then
+      echo "XXX"; echo "32"; echo "Build dashboard (npm ci)..."; echo "XXX"
+      (cd "$SCRIPT_DIR/dashboard" && npm ci --prefer-offline 2>>"$TMPERR") || \
+      (cd "$SCRIPT_DIR/dashboard" && npm ci 2>>"$TMPERR") || \
+        { echo "INSTALL_FAILED" > "$TMPSYNC"; }
+    fi
 
-    echo "XXX"; echo "36"; echo "Build dashboard (next build) — ini beberapa menit..."; echo "XXX"
+    echo "XXX"; echo "36"; echo "Build dashboard (npm run build) — ini beberapa menit..."; echo "XXX"
     (cd "$SCRIPT_DIR/dashboard" && npm run build 2>>"$TMPERR") || \
       { echo "INSTALL_FAILED" > "$TMPSYNC"; }
 
