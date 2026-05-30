@@ -18,14 +18,44 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 die()   { error "$*"; exit 1; }
 
+# ── Flags ─────────────────────────────────────────────────────
+REBUILD_DASHBOARD=false
+for arg in "$@"; do
+  case "$arg" in
+    --rebuild-dashboard) REBUILD_DASHBOARD=true ;;
+    --help|-h)
+      echo "Penggunaan: sudo bash install.sh [--rebuild-dashboard]"
+      echo "  --rebuild-dashboard   Hapus build lama dan build ulang dashboard"
+      exit 0 ;;
+    *) die "Flag tidak dikenal: $arg" ;;
+  esac
+done
+
 # ── Preflight checks ──────────────────────────────────────────
 [[ $EUID -eq 0 ]] || die "Jalankan sebagai root: sudo bash install.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$SCRIPT_DIR/dns/dnsdist.conf" ]] || \
   die "Jalankan dari root project (direktori yang berisi dns/dnsdist.conf)"
-[[ -f "$SCRIPT_DIR/dashboard/server.js" ]] || \
-  die "dashboard/server.js tidak ditemukan — jalankan create-installer.sh terlebih dahulu"
+
+# --rebuild-dashboard: buang build lama supaya step instalasi rebuild dari awal
+if $REBUILD_DASHBOARD; then
+  rm -rf "$SCRIPT_DIR/dashboard/.next"
+  ok "Build dashboard lama dihapus — akan di-build ulang saat instalasi"
+fi
+
+# Deteksi sumber dashboard:
+#   zip installer  → dashboard/server.js (standalone sudah di-flatten oleh create-installer.sh)
+#   git clone      → dashboard/.next/standalone/server.js (perlu build dulu)
+DASHBOARD_SRC=""
+if [[ -f "$SCRIPT_DIR/dashboard/server.js" ]]; then
+  DASHBOARD_SRC="$SCRIPT_DIR/dashboard"
+elif [[ -f "$SCRIPT_DIR/dashboard/.next/standalone/server.js" ]]; then
+  DASHBOARD_SRC="$SCRIPT_DIR/dashboard/.next/standalone"
+elif [[ ! -d "$SCRIPT_DIR/dashboard" ]]; then
+  die "Direktori dashboard tidak ditemukan"
+fi
+# Kalau DASHBOARD_SRC masih kosong, dashboard belum di-build — akan di-build saat instalasi
 
 command -v whiptail &>/dev/null || die "whiptail tidak ditemukan. Install: apt-get install whiptail"
 
@@ -295,12 +325,35 @@ trap cleanup EXIT
   ln -sf "$LIB_DIR/rpz2cdb.py"  /usr/local/bin/rpz2cdb
   ln -sf "$LIB_DIR/rpz-sync.py" /usr/local/bin/rpz-sync
 
-  # ── 3b. Copy dashboard ──
-  echo "XXX"; echo "36"; echo "Mengcopy dashboard..."; echo "XXX"
-  cp -r "$SCRIPT_DIR/dashboard/." /opt/dashboard/
+  # ── 3b. Build dashboard jika belum ada (git clone tanpa create-installer.sh) ──
+  _DASH_SRC="$DASHBOARD_SRC"
+  if [[ -z "$_DASH_SRC" ]]; then
+    echo "XXX"; echo "32"; echo "Build dashboard (npm ci)..."; echo "XXX"
+    (cd "$SCRIPT_DIR/dashboard" && npm ci --prefer-offline 2>>"$TMPERR") || \
+    (cd "$SCRIPT_DIR/dashboard" && npm ci 2>>"$TMPERR") || \
+      { echo "INSTALL_FAILED" > "$TMPSYNC"; }
+
+    echo "XXX"; echo "36"; echo "Build dashboard (next build) — ini beberapa menit..."; echo "XXX"
+    (cd "$SCRIPT_DIR/dashboard" && npm run build 2>>"$TMPERR") || \
+      { echo "INSTALL_FAILED" > "$TMPSYNC"; }
+
+    _DASH_SRC="$SCRIPT_DIR/dashboard/.next/standalone"
+  fi
+
+  echo "XXX"; echo "40"; echo "Mengcopy dashboard..."; echo "XXX"
+  cp -r "$_DASH_SRC/." /opt/dashboard/
+
+  # Kalau dari standalone (git clone), static dan public tidak ikut di standalone dir
+  if [[ "$_DASH_SRC" == *"standalone"* ]]; then
+    mkdir -p /opt/dashboard/.next
+    [[ -d "$SCRIPT_DIR/dashboard/.next/static" ]] && \
+      cp -r "$SCRIPT_DIR/dashboard/.next/static" /opt/dashboard/.next/static
+    [[ -d "$SCRIPT_DIR/dashboard/public" ]] && \
+      cp -r "$SCRIPT_DIR/dashboard/public"       /opt/dashboard/public
+  fi
 
   # ── 4. Konfigurasi dnsdist.conf ──
-  echo "XXX"; echo "44"; echo "Menulis konfigurasi dnsdist..."; echo "XXX"
+  echo "XXX"; echo "48"; echo "Menulis konfigurasi dnsdist..."; echo "XXX"
   CONSOLE_KEY=$(python3 -c \
     "import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())")
   echo "$CONSOLE_KEY" > "$TMPKEY"
