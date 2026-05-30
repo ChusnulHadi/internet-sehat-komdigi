@@ -289,7 +289,8 @@ TMPAPIKEY=$(mktemp)
 TMPSYNC=$(mktemp)
 TMPPORT=$(mktemp)
 TMPERR=$(mktemp)
-cleanup() { rm -f "$TMPKEY" "$TMPAPIKEY" "$TMPSYNC" "$TMPPORT" "$TMPERR"; }
+TMPDASH=$(mktemp); echo "ok" > "$TMPDASH"
+cleanup() { rm -f "$TMPKEY" "$TMPAPIKEY" "$TMPSYNC" "$TMPPORT" "$TMPERR" "$TMPDASH"; }
 trap cleanup EXIT
 
 (
@@ -326,28 +327,33 @@ trap cleanup EXIT
   if [[ -z "$_DASH_SRC" ]]; then
     if ! $REBUILD_DASHBOARD; then
       echo "XXX"; echo "32"; echo "Build dashboard (npm ci)..."; echo "XXX"
-      (cd "$SCRIPT_DIR/dashboard" && npm ci --prefer-offline 2>>"$TMPERR") || \
-      (cd "$SCRIPT_DIR/dashboard" && npm ci 2>>"$TMPERR") || \
-        { echo "INSTALL_FAILED" > "$TMPSYNC"; }
+      (cd "$SCRIPT_DIR/dashboard" && npm ci --prefer-offline >>"$TMPERR" 2>&1) || \
+      (cd "$SCRIPT_DIR/dashboard" && npm ci >>"$TMPERR" 2>&1)
     fi
 
     echo "XXX"; echo "36"; echo "Build dashboard (npm run build) — ini beberapa menit..."; echo "XXX"
-    (cd "$SCRIPT_DIR/dashboard" && npm run build 2>>"$TMPERR") || \
-      { echo "INSTALL_FAILED" > "$TMPSYNC"; }
-
-    _DASH_SRC="$SCRIPT_DIR/dashboard/.next/standalone"
+    if (cd "$SCRIPT_DIR/dashboard" && npm run build >>"$TMPERR" 2>&1); then
+      _DASH_SRC="$SCRIPT_DIR/dashboard/.next/standalone"
+    else
+      echo "fail" > "$TMPDASH"
+    fi
   fi
 
-  echo "XXX"; echo "40"; echo "Mengcopy dashboard..."; echo "XXX"
-  cp -r "$_DASH_SRC/." /opt/dashboard/
+  if [[ -n "$_DASH_SRC" ]] && [[ -d "$_DASH_SRC" ]]; then
+    echo "XXX"; echo "40"; echo "Mengcopy dashboard..."; echo "XXX"
+    cp -r "$_DASH_SRC/." /opt/dashboard/
 
-  # Kalau dari standalone (git clone), static dan public tidak ikut di standalone dir
-  if [[ "$_DASH_SRC" == *"standalone"* ]]; then
-    mkdir -p /opt/dashboard/.next
-    [[ -d "$SCRIPT_DIR/dashboard/.next/static" ]] && \
-      cp -r "$SCRIPT_DIR/dashboard/.next/static" /opt/dashboard/.next/static
-    [[ -d "$SCRIPT_DIR/dashboard/public" ]] && \
-      cp -r "$SCRIPT_DIR/dashboard/public"       /opt/dashboard/public
+    # Kalau dari standalone (git clone), static dan public tidak ikut di standalone dir
+    if [[ "$_DASH_SRC" == *"standalone"* ]]; then
+      mkdir -p /opt/dashboard/.next
+      [[ -d "$SCRIPT_DIR/dashboard/.next/static" ]] && \
+        cp -r "$SCRIPT_DIR/dashboard/.next/static" /opt/dashboard/.next/static
+      [[ -d "$SCRIPT_DIR/dashboard/public" ]] && \
+        cp -r "$SCRIPT_DIR/dashboard/public"       /opt/dashboard/public
+    fi
+  else
+    echo "XXX"; echo "40"; echo "SKIP copy dashboard — build gagal"; echo "XXX"
+    echo "fail" > "$TMPDASH"
   fi
 
   # ── 4. Konfigurasi dnsdist.conf ──
@@ -464,6 +470,7 @@ CONSOLE_KEY=$(cat "$TMPKEY" 2>/dev/null || echo "(tidak tersedia)")
 DASHBOARD_KEY=$(cat "$TMPAPIKEY" 2>/dev/null || echo "(tidak tersedia)")
 SYNC_STATUS=$(cat "$TMPSYNC" 2>/dev/null || echo "fail")
 PORT_STATUS=$(cat "$TMPPORT" 2>/dev/null || echo "free")
+DASH_BUILD_STATUS=$(cat "$TMPDASH" 2>/dev/null || echo "fail")
 
 if systemctl is-active --quiet dnsdist; then
   SVC_STATUS="Berjalan ✓"
@@ -505,6 +512,12 @@ if [[ "$SYNC_STATUS" == "fail" ]]; then
   WARNINGS+="\n\n⚠  Sinkronisasi zona RPZ gagal."
   WARNINGS+="\n   Blocklist belum aktif. Retry setelah koneksi tersedia:"
   WARNINGS+="\n   rpz-sync --server ${RPZ_REMOTE} --zone ${RPZ_ZONE} --force"
+fi
+if [[ "$DASH_BUILD_STATUS" == "fail" ]]; then
+  WARNINGS+="\n\n✗  Build dashboard gagal."
+  WARNINGS+="\n   Lihat log error: cat ${TMPERR}"
+  WARNINGS+="\n   Build manual: cd ${SCRIPT_DIR}/dashboard && npm run build"
+  WARNINGS+="\n   Lalu install ulang: sudo bash install.sh --rebuild-dashboard"
 fi
 if ! systemctl is-active --quiet dnsdist; then
   WARNINGS+="\n\n✗  dnsdist gagal start. Cek log:"
