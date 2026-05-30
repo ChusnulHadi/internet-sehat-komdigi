@@ -1,0 +1,20 @@
+# Test blocklist - domains untuk keperluan testing
+# Format: satu domain per baris
+# Baris diawali # adalah komentar, diabaikan
+
+# Social media (contoh blokir)
+tiktok.com
+www.tiktok.com
+
+# Adult content (contoh blokir)
+pornhub.com
+www.pornhub.com
+xvideos.com
+www.xvideos.com
+xnxx.com
+www.xnxx.com
+
+# Gambling (contoh blokir)
+bet365.com
+www.bet365.com
+poker88.com

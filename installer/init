@@ -1,0 +1,85 @@
+#!/bin/sh
+# PID 1 — load storage modules, setup env, jalankan wizard
+
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || {
+    mount -t tmpfs tmpfs /dev
+    mknod -m 666 /dev/null    c 1 3
+    mknod -m 666 /dev/zero    c 1 5
+    mknod -m 666 /dev/tty     c 5 0
+    mknod -m 600 /dev/console c 5 1
+    mknod -m 666 /dev/ptmx    c 5 2
+    mknod -m 666 /dev/random  c 1 8
+    mknod -m 666 /dev/urandom c 1 9
+}
+
+mkdir -p /dev/pts /dev/shm /tmp /mnt /run
+mount -t devpts devpts /dev/pts 2>/dev/null || true
+mount -t tmpfs  tmpfs  /dev/shm 2>/dev/null || true
+mount -t tmpfs  tmpfs  /tmp
+
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export TERM=linux
+export HOME=/root
+
+# ── Load storage drivers ──────────────────────────────────────
+LOG=/tmp/init-disk.log
+
+{
+    echo "=== kernel version ==="
+    cat /proc/version 2>/dev/null
+
+    echo "=== /lib/modules/ ==="
+    ls /lib/modules/ 2>/dev/null || echo "(kosong)"
+
+    echo "=== modules.dep ==="
+    wc -l /lib/modules/*/modules.dep 2>/dev/null || echo "tidak ada"
+
+    echo "=== depmod ==="
+    depmod -a 2>&1 && echo "OK" || echo "FAILED"
+
+    echo "=== modprobe results ==="
+    for mod in \
+        virtio virtio_ring virtio_pci \
+        scsi_mod sd_mod \
+        virtio_blk virtio_scsi \
+        virtio_net \
+        libata ata_generic ata_piix ahci libahci \
+        nvme nvme_core \
+        xhci_hcd ehci_hcd uhci_hcd usb_storage \
+        e1000 e1000e igb r8169 tg3; do
+        if modprobe "$mod" 2>/dev/null; then
+            echo "  OK  : $mod"
+        else
+            echo "  FAIL: $mod — $(modprobe -v "$mod" 2>&1 | tail -1)"
+        fi
+    done
+
+    echo "=== loaded modules ==="
+    cut -d' ' -f1 /proc/modules 2>/dev/null | sort || echo "tidak ada"
+
+    echo "=== /sys/block/ ==="
+    ls -la /sys/block/ 2>/dev/null
+
+    echo "=== /proc/partitions ==="
+    cat /proc/partitions 2>/dev/null
+} > "$LOG" 2>&1
+
+# Tunggu disk muncul di sysfs, populate /dev
+sleep 2
+mdev -s 2>/dev/null || true
+
+echo 1 > /proc/sys/kernel/printk 2>/dev/null
+
+# ── Network — DHCP ───────────────────────────────────────────
+ip link set lo up 2>/dev/null
+for iface in $(ls /sys/class/net/ | grep -Ev '^(lo|sit[0-9])'); do
+    ip link set "$iface" up 2>/dev/null
+    udhcpc -i "$iface" -n -q -t 10 2>/dev/null &
+done
+wait
+
+clear
+exec /installer/wizard.sh

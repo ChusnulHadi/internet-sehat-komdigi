@@ -1,0 +1,80 @@
+#cloud-config
+autoinstall:
+  version: 1
+
+  locale: id_ID
+  keyboard:
+    layout: us
+
+  # ── Akun ──────────────────────────────────────────────────────
+  # Password digenerate oleh build-iso.sh dan disubstitusi ke
+  # placeholder di bawah (format: SHA-512 crypt).
+  identity:
+    hostname: internet-sehat-dns
+    username: admin
+    password: "ADMIN_PASSWORD_HASH"
+
+  # Root diberi password yang sama via late-commands agar bisa
+  # autologin di tty1 untuk menjalankan installer DNS.
+  user-data:
+    disable_root: false
+
+  # ── Jaringan ──────────────────────────────────────────────────
+  # DHCP saat instalasi OS. IP statis untuk DNS service
+  # dikonfigurasi setelah boot pertama via install.sh.
+  network:
+    network:
+      version: 2
+      ethernets:
+        any-en:
+          match:
+            name: "en*"
+          dhcp4: true
+        any-eth:
+          match:
+            name: "eth*"
+          dhcp4: true
+
+  # ── Storage ───────────────────────────────────────────────────
+  # Gunakan seluruh disk (wipe). Ganti 'direct' dengan 'lvm'
+  # jika ingin LVM, atau tulis layout manual untuk multi-disk.
+  storage:
+    layout:
+      name: direct
+
+  # ── SSH ───────────────────────────────────────────────────────
+  ssh:
+    install-server: true
+    allow-pw: true
+
+  # ── Packages ─────────────────────────────────────────────────
+  # Packages utama (dnsdist dll.) diinstall oleh install.sh.
+  # whiptail sudah pasti ada di Ubuntu karena dependency debconf.
+  packages:
+    - curl
+
+  # ── Late commands (berjalan setelah OS terinstall) ────────────
+  late-commands:
+    # Salin project ke sistem yang baru diinstall
+    - mkdir -p /target/opt/internet-sehat/dns
+    - cp /cdrom/internet-sehat/install.sh    /target/opt/internet-sehat/
+    - cp /cdrom/internet-sehat/dns/dnsdist.conf /target/opt/internet-sehat/dns/
+    - cp /cdrom/internet-sehat/dns/rpz2cdb.py   /target/opt/internet-sehat/dns/
+    - cp /cdrom/internet-sehat/dns/rpz-sync.py  /target/opt/internet-sehat/dns/
+    - cp /cdrom/internet-sehat/dns/test.sh       /target/opt/internet-sehat/dns/
+    - cp /cdrom/internet-sehat/dns/build-cdb.sh  /target/opt/internet-sehat/dns/
+    - chmod -R 755 /target/opt/internet-sehat
+
+    # Marker: install.sh akan jalan sekali saat first boot
+    - touch /target/opt/internet-sehat/.setup-pending
+
+    # Root password = sama dengan admin (untuk autologin tty1)
+    - curtin in-target -- bash -c "usermod -p 'ADMIN_PASSWORD_HASH' root"
+
+    # Autologin root di tty1 agar installer DNS muncul otomatis
+    - mkdir -p /target/etc/systemd/system/getty@tty1.service.d
+    - cp /cdrom/autoinstall/getty-autologin.conf /target/etc/systemd/system/getty@tty1.service.d/autologin.conf
+
+    # Jalankan install.sh saat root login pertama kali
+    - cp /cdrom/autoinstall/firstboot-profile.sh /target/root/.bash_profile
+    - chmod 644 /target/root/.bash_profile

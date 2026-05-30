@@ -1,0 +1,9 @@
+dashboard/node_modules
+dashboard/.next
+*.iso
+.cache
+preseed
+autoinstall
+installer
+build-iso.sh
+create-installer.sh

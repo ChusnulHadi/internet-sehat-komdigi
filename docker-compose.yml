@@ -1,0 +1,33 @@
+services:
+  internet-sehat:
+    build: .
+    container_name: internet-sehat
+    ports:
+      # - "5353:53/udp"   # ganti ke 53:53 kalau deploy langsung
+      # - "5353:53/tcp"
+      - "8083:8083/tcp" # dnsdist REST API (opsional, untuk debug)
+      - "3000:3000/tcp" # dashboard
+    environment:
+      # Set DNSDIST_RPZ_REMOTE untuk auto-start tanpa install.sh
+      DNSDIST_RPZ_REMOTE: "193.255.196.202"
+      DNSDIST_RPZ_ZONE: "trustpositifkominfo"
+      DNSDIST_LISTEN_ADDR: "0.0.0.0"
+      DNSDIST_BLOCK_MODE: "nxdomain"
+      DNSDIST_REDIRECT_IP: "0.0.0.0"
+      DNSDIST_CLIENT_ACL: "0.0.0.0/0"
+      # Secrets — override via .env (lihat .env.example), JANGAN commit nilai asli
+      DNSDIST_DASHBOARD_PASSWORD: "${DNSDIST_DASHBOARD_PASSWORD:-changeme}"
+      DNSDIST_DASHBOARD_API_KEY: "${DNSDIST_API_KEY:-changeme}"
+      # Dashboard → dnsdist API (API key harus sama dengan di atas)
+      DNSDIST_URL: "http://127.0.0.1:8083"
+      DNSDIST_API_KEY: "${DNSDIST_API_KEY:-changeme}"
+    volumes:
+      - blocklist:/opt/blocklist
+      - logs:/var/log/dnsdist
+    cap_add:
+      - NET_BIND_SERVICE
+    restart: unless-stopped
+
+volumes:
+  blocklist:
+  logs:

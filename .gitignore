@@ -1,0 +1,37 @@
+# ── Secrets / local config ───────────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.p12
+id_rsa*
+
+# ── Build artifacts (large / generated) ──────────────────────
+*.iso
+*.zip
+*.cdb
+.cache/
+internet-sehat-installer-*/
+
+# ── Dashboard (Next.js) ──────────────────────────────────────
+node_modules/
+.next/
+out/
+dashboard/.next/
+dashboard/node_modules/
+*.tsbuildinfo
+
+# ── Runtime / data ───────────────────────────────────────────
+/opt/blocklist
+blocklist/
+logs/
+*.log
+
+# ── OS / editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
