@@ -273,7 +273,7 @@ trap cleanup EXIT
   # ── 1. Dependencies ──
   echo "XXX"; echo "5"; echo "Menginstall dependencies (apt-get)..."; echo "XXX"
   if ! apt-get update -qq 2>>"$TMPERR" \
-     || ! apt-get install -y dnsdist freecdb python3 dnsutils curl -qq 2>>"$TMPERR"; then
+     || ! apt-get install -y dnsdist freecdb python3 dnsutils curl git -qq 2>>"$TMPERR"; then
     echo "INSTALL_FAILED" > "$TMPSYNC"
   fi
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >>"$TMPERR" 2>&1
@@ -376,12 +376,26 @@ SVCEOF
   systemctl restart internet-sehat-dashboard
 
   # ── 8. Cron ──
-  echo "XXX"; echo "90"; echo "Mengatur jadwal sinkronisasi otomatis (cron)..."; echo "XXX"
+  echo "XXX"; echo "88"; echo "Mengatur jadwal sinkronisasi otomatis (cron)..."; echo "XXX"
   cat > /etc/cron.d/rpz-sync <<CRONEOF
 # internet-sehat — sync blocklist dari Komdigi (setiap 6 jam)
 0 */6 * * * root /usr/local/bin/rpz-sync --server ${RPZ_REMOTE} --zone ${RPZ_ZONE} >> /var/log/dnsdist/rpz-sync.log 2>&1
 CRONEOF
   chmod 644 /etc/cron.d/rpz-sync
+
+  # ── 8b. Auto-update script & cron ──
+  echo "XXX"; echo "93"; echo "Menginstall skrip auto-update..."; echo "XXX"
+  cat > /usr/local/bin/internet-sehat-update <<UPDATEEOF
+#!/bin/bash
+exec bash "${SCRIPT_DIR}/update.sh" "\$@"
+UPDATEEOF
+  chmod +x /usr/local/bin/internet-sehat-update
+
+  cat > /etc/cron.d/internet-sehat-update <<CRONEOF
+# internet-sehat — auto-update dari repository (setiap Minggu jam 03:00)
+0 3 * * 0 root /usr/local/bin/internet-sehat-update >> /var/log/dnsdist/update.log 2>&1
+CRONEOF
+  chmod 644 /etc/cron.d/internet-sehat-update
 
   # ── 9. DNS test ──
   echo "XXX"; echo "96"; echo "Menjalankan tes DNS..."; echo "XXX"
@@ -421,9 +435,13 @@ RESULT_MSG+="  Mode Blokir   : ${BLOCK_MODE}\n"
 RESULT_MSG+="  dnsdist       : ${SVC_STATUS}\n"
 RESULT_MSG+="  Dashboard     : ${DASH_STATUS}\n"
 RESULT_MSG+="\n"
+RESULT_MSG+="  Auto-update   : Setiap Minggu 03:00 WIB\n"
+RESULT_MSG+="\n"
 RESULT_MSG+="Console key (simpan ini!):\n  ${CONSOLE_KEY}\n"
 RESULT_MSG+="\n"
 RESULT_MSG+="Akses CLI:\n  dnsdist --client -k \"${CONSOLE_KEY}\"\n"
+RESULT_MSG+="\n"
+RESULT_MSG+="Update manual: sudo internet-sehat-update\n"
 
 # Peringatan
 WARNINGS=""
