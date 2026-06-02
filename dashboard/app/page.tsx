@@ -12,7 +12,6 @@ import {
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AnyRecord } from "node:dns";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -153,9 +152,9 @@ export default function Dashboard() {
       : "—";
 
   return (
-    <div className="min-h-screen bg-background p-6 font-mono">
+    <div className="min-h-screen bg-background p-4 font-mono sm:p-6">
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-base font-semibold">internet-sehat DNS</h1>
           <p className="text-xs text-muted-foreground">
@@ -261,43 +260,45 @@ export default function Dashboard() {
           {!snap?.servers.length ? (
             <p className="text-xs text-muted-foreground">Tidak ada data</p>
           ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 pr-4 font-normal">Server</th>
-                  <th className="pb-2 pr-4 font-normal">Status</th>
-                  <th className="pb-2 pr-4 font-normal">Queries</th>
-                  <th className="pb-2 pr-4 font-normal">Drops</th>
-                  <th className="pb-2 font-normal">Latency</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snap.servers.map((s) => (
-                  <tr key={s.address} className="border-b last:border-0">
-                    <td className="py-2 pr-4">
-                      <div>{s.name}</div>
-                      <div className="text-muted-foreground">{s.address}</div>
-                    </td>
-                    <td className="py-2 pr-4">
-                      <Badge
-                        variant={s.state === "up" ? "default" : "destructive"}
-                      >
-                        {s.state}
-                      </Badge>
-                    </td>
-                    <td className="py-2 pr-4 tabular-nums">
-                      {s.queries.toLocaleString()}
-                    </td>
-                    <td className="py-2 pr-4 tabular-nums">
-                      {s.drops.toLocaleString()}
-                    </td>
-                    <td className="py-2 tabular-nums">
-                      {s.latency.toFixed(1)} ms
-                    </td>
+            <div className="-mx-2 overflow-x-auto px-2">
+              <table className="w-full min-w-[420px] text-xs">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-2 pr-4 font-normal">Server</th>
+                    <th className="pb-2 pr-4 font-normal">Status</th>
+                    <th className="pb-2 pr-4 font-normal">Queries</th>
+                    <th className="pb-2 pr-4 font-normal">Drops</th>
+                    <th className="pb-2 font-normal">Latency</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {snap.servers.map((s) => (
+                    <tr key={s.address} className="border-b last:border-0">
+                      <td className="py-2 pr-4">
+                        <div>{s.name}</div>
+                        <div className="text-muted-foreground">{s.address}</div>
+                      </td>
+                      <td className="py-2 pr-4">
+                        <Badge
+                          variant={s.state === "up" ? "default" : "destructive"}
+                        >
+                          {s.state}
+                        </Badge>
+                      </td>
+                      <td className="py-2 pr-4 tabular-nums">
+                        {s.queries.toLocaleString()}
+                      </td>
+                      <td className="py-2 pr-4 tabular-nums">
+                        {s.drops.toLocaleString()}
+                      </td>
+                      <td className="py-2 tabular-nums">
+                        {s.latency.toFixed(1)} ms
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -326,7 +327,9 @@ function StatCard({ title, value }: { title: string; value: string }) {
         <CardTitle className="text-muted-foreground">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
+        <p className="text-xl font-semibold tabular-nums sm:text-2xl">
+          {value}
+        </p>
       </CardContent>
     </Card>
   );

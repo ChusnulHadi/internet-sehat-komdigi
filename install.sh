@@ -341,6 +341,12 @@ trap cleanup EXIT
 
   if [[ -n "$_DASH_SRC" ]] && [[ -d "$_DASH_SRC" ]]; then
     echo "XXX"; echo "40"; echo "Mengcopy dashboard..."; echo "XXX"
+    # Bersihkan deploy lama dulu. Tanpa ini, pada rebuild/re-install:
+    #   cp -r SRC /opt/dashboard/.next/static (DEST sudah ada) → nested jadi .../static/static,
+    #   chunk BARU salah path & chunk LAMA nyangkut → server.js baru tapi asset lama → UI lama terus.
+    # Aman: seluruh isi /opt/dashboard digenerate dari build; config ada di systemd unit, bukan di sini.
+    rm -rf /opt/dashboard
+    mkdir -p /opt/dashboard
     cp -r "$_DASH_SRC/." /opt/dashboard/
 
     # Kalau dari standalone (git clone), static dan public tidak ikut di standalone dir
