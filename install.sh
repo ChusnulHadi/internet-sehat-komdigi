@@ -332,7 +332,7 @@ trap cleanup EXIT
     fi
 
     echo "XXX"; echo "36"; echo "Build dashboard (npm run build) — ini beberapa menit..."; echo "XXX"
-    if (cd "$SCRIPT_DIR/dashboard" && NODE_OPTIONS="--max-old-space-size=512" npm run build >>"$TMPERR" 2>&1); then
+    if (cd "$SCRIPT_DIR/dashboard" && NODE_OPTIONS="--max-old-space-size=256" npm run build >>"$TMPERR" 2>&1); then
       _DASH_SRC="$SCRIPT_DIR/dashboard/.next/standalone"
     else
       echo "fail" > "$TMPDASH"
