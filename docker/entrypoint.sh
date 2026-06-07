@@ -25,7 +25,9 @@ if [ -n "${DNSDIST_RPZ_REMOTE:-}" ] && ! grep -q "internet-sehat" /etc/dnsdist/d
   cp /opt/internet-sehat/dns/dnsdist.conf /etc/dnsdist/dnsdist.conf
 
   log "Sinkronisasi blocklist awal dari ${DNSDIST_RPZ_REMOTE}..."
-  rpz-sync \
+  # Low-priority (nice/ionice) agar sync awal tidak rebut CPU/IO dengan
+  # dashboard/dnsdist; sync fully streaming sehingga memori rendah.
+  nice -n 19 ionice -c3 rpz-sync \
     --server "$DNSDIST_RPZ_REMOTE" \
     --zone   "${DNSDIST_RPZ_ZONE:-trustpositifkominfo}" \
     --force 2>&1 | while IFS= read -r line; do log "$line"; done \

@@ -118,19 +118,29 @@ def run_ixfr(server: str, zone: str, local_serial: int) -> tuple[bool, int | Non
     """
     log.info(f"IXFR dari {server} (serial {local_serial} → ?) ...")
 
-    result = subprocess.run(
+    # Streaming: parse output dig baris per baris, jangan buffer seluruh
+    # delta ke RAM (delta besar = OOM, bisa kill dnsdist → DNS mati).
+    proc = subprocess.Popen(
         ["dig", f"@{server}", zone, f"IXFR={local_serial}",
          "+time=120", "+tries=1", "+noall", "+answer"],
-        capture_output=True, text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
 
-    if result.returncode != 0 or not result.stdout.strip():
-        log.warning("IXFR: tidak ada respons atau error, fallback ke AXFR")
+    try:
+        adds, deletes, is_axfr_fallback, new_serial = _parse_ixfr_output(
+            proc.stdout, zone
+        )
+    finally:
+        proc.stdout.close()
+        proc.wait()
+
+    stderr_out = proc.stderr.read()
+    if proc.returncode != 0:
+        log.warning(f"IXFR: error (rc={proc.returncode}): {stderr_out.strip()}, "
+                    "fallback ke AXFR")
         return False, None
-
-    adds, deletes, is_axfr_fallback, new_serial = _parse_ixfr_output(
-        result.stdout, zone
-    )
 
     if is_axfr_fallback:
         log.info("Server mengirim AXFR fallback (serial terlalu lama), lanjut AXFR")
@@ -149,9 +159,11 @@ def run_ixfr(server: str, zone: str, local_serial: int) -> tuple[bool, int | Non
     return True, new_serial
 
 
-def _parse_ixfr_output(output: str, zone: str) -> tuple:
+def _parse_ixfr_output(lines, zone: str) -> tuple:
     """
     Parse output dig IXFR (flat FQDN format, tanpa $ORIGIN).
+    `lines` boleh string atau iterable baris (mis. proc.stdout) — diproses
+    streaming agar tidak menahan seluruh output di RAM.
 
     IXFR structure:
       SOA(new) → SOA(old) → [deletes] → SOA(new) → [adds] → SOA(new)
@@ -170,7 +182,10 @@ def _parse_ixfr_output(output: str, zone: str) -> tuple:
     new_serial = None
     soa_count  = 0
 
-    for raw in output.splitlines():
+    if isinstance(lines, str):
+        lines = lines.splitlines()
+
+    for raw in lines:
         line = raw.strip()
         if not line or line.startswith(";"):
             continue

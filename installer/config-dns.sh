@@ -43,9 +43,13 @@ echo "$CONSOLE_KEY" > "$TARGET/root/.dnsdist-key"
 chmod 600 "$TARGET/root/.dnsdist-key"
 
 # ── Cron: sinkronisasi RPZ setiap 6 jam ──────────────────────
+# Dijalankan pelan & hemat resource: nice/ionice menurunkan prioritas
+# CPU/IO, systemd-run -p MemoryMax mengurung sync di cgroup sendiri
+# (256M longgar — sync fully streaming). Kalau sync membengkak, yang
+# kena OOM hanya scope sync, BUKAN dnsdist → DNS tetap jalan.
 cat > "$TARGET/etc/cron.d/rpz-sync" << CRONEOF
-# internet-sehat — sync blocklist dari Komdigi
-0 */6 * * * root /usr/local/bin/rpz-sync --server ${RPZ_REMOTE} --zone ${RPZ_ZONE} >> /var/log/dnsdist/rpz-sync.log 2>&1
+# internet-sehat — sync blocklist dari Komdigi (low-priority, memory-capped)
+0 */6 * * * root systemd-run --scope --quiet --collect -p MemoryMax=256M nice -n 19 ionice -c3 /usr/local/bin/rpz-sync --server ${RPZ_REMOTE} --zone ${RPZ_ZONE} >> /var/log/dnsdist/rpz-sync.log 2>&1
 CRONEOF
 chmod 644 "$TARGET/etc/cron.d/rpz-sync"
 
@@ -91,7 +95,9 @@ cat > "$TARGET/etc/motd" << MOTDEOF
 MOTDEOF
 
 # ── Initial RPZ sync (best-effort, tidak fatal jika gagal) ────
-chroot "$TARGET" /usr/local/bin/rpz-sync \
+# Low-priority (nice/ionice) — di dalam chroot systemd belum jalan, jadi
+# tanpa systemd-run; sync sudah fully streaming sehingga memori rendah.
+chroot "$TARGET" nice -n 19 ionice -c3 /usr/local/bin/rpz-sync \
     --server "$RPZ_REMOTE" \
     --zone "$RPZ_ZONE" \
     --force \

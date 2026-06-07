@@ -28,6 +28,7 @@ dashboard/node_modules/
 blocklist/
 logs/
 *.log
+__pycache__
 
 # ── AI context ───────────────────────────────────────────────
 CLAUDE.md
