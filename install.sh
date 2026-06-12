@@ -375,7 +375,7 @@ trap cleanup EXIT
   sed -i "s|^local LISTEN_ADDR\s*=.*|local LISTEN_ADDR   = \"${LISTEN_IP}\"|"              "$CONF"
   sed -i "s|^local BLOCK_MODE\s*=.*|local BLOCK_MODE    = \"${BLOCK_MODE}\"|"              "$CONF"
   sed -i "s|^local REDIRECT_IP\s*=.*|local REDIRECT_IP   = \"${REDIRECT_IP}\"|"            "$CONF"
-  sed -i "s|^local CLIENT_ACL\s*=.*|local CLIENT_ACL    = { \"${CLIENT_ACL}\", \"::/0\" }|" "$CONF"
+  sed -i "s|^local CLIENT_ACL\s*=.*|local CLIENT_ACL    = { \"${CLIENT_ACL}\", \"127.0.0.0/8\", \"::/0\" }|" "$CONF"
   sed -i "s|^-- setKey.*|setKey(\"${CONSOLE_KEY}\")|"                                      "$CONF"
   sed -i "s|^local DASHBOARD_API_KEY\s*=.*|local DASHBOARD_API_KEY  = \"${DASHBOARD_KEY}\"|" "$CONF"
 
