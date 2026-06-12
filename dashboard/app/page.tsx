@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -36,9 +37,22 @@ interface Snapshot {
 }
 
 interface DataPoint {
+  ts: number;
   time: string;
   qps: number;
   blockedPerSec: number;
+}
+
+interface DigResult {
+  label: string;
+  domain: string;
+  category: string;
+  expect: "allow" | "block";
+  status: "allowed" | "blocked" | "error";
+  addresses: string[];
+  ms: number;
+  pass: boolean;
+  note?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -93,7 +107,7 @@ function timeLabel(): string {
 // ── Constants ────────────────────────────────────────────────────
 
 const POLL_MS = 5_000;
-const MAX_PTS = 30;
+const WINDOW_MS = 5 * 60_000; // grafik menampilkan 5 menit terakhir (rolling)
 const INTERVAL_S = POLL_MS / 1000;
 
 // ── Page ─────────────────────────────────────────────────────────
@@ -104,6 +118,25 @@ export default function Dashboard() {
   const [points, setPoints] = useState<DataPoint[]>([]);
   const prev = useRef<{ queries: number; blocked: number } | null>(null);
   const [, startTransition] = useTransition();
+  const [dig, setDig] = useState<DigResult[]>([]);
+  const [digLoading, setDigLoading] = useState(false);
+
+  const runDigTest = useCallback(async () => {
+    setDigLoading(true);
+    try {
+      const res = await fetch("/api/digtest", { cache: "no-store" });
+      const data: { results?: DigResult[] } = await res.json();
+      setDig(data.results ?? []);
+    } catch {
+      setDig([]);
+    } finally {
+      setDigLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    runDigTest();
+  }, [runDigTest]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -124,14 +157,18 @@ export default function Dashboard() {
           Math.max(0, next.queries - prev.current.queries) / INTERVAL_S;
         const bps =
           Math.max(0, next.blocked - prev.current.blocked) / INTERVAL_S;
-        setPoints((pts) => [
-          ...pts.slice(-(MAX_PTS - 1)),
-          {
-            time: timeLabel(),
-            qps: Math.round(qps * 10) / 10,
-            blockedPerSec: Math.round(bps * 10) / 10,
-          },
-        ]);
+        const now = Date.now();
+        setPoints((pts) =>
+          [
+            ...pts,
+            {
+              ts: now,
+              time: timeLabel(),
+              qps: Math.round(qps * 10) / 10,
+              blockedPerSec: Math.round(bps * 10) / 10,
+            },
+          ].filter((p) => now - p.ts <= WINDOW_MS),
+        );
       }
 
       prev.current = { queries: next.queries, blocked: next.blocked };
@@ -202,7 +239,7 @@ export default function Dashboard() {
       {/* Chart */}
       <Card className="mb-4">
         <CardHeader>
-          <CardTitle>Query rate (per detik)</CardTitle>
+          <CardTitle>Query rate (per detik) · 5 menit terakhir</CardTitle>
         </CardHeader>
         <CardContent>
           {points.length < 2 ? (
@@ -250,6 +287,9 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Uji blokir (dig test) */}
+      <DigTestCard results={dig} loading={digLoading} onRefresh={runDigTest} />
 
       {/* Upstream servers */}
       <Card>
@@ -332,5 +372,95 @@ function StatCard({ title, value }: { title: string; value: string }) {
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+function DigTestCard({
+  results,
+  loading,
+  onRefresh,
+}: {
+  results: DigResult[];
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  // Kelompokkan per kategori, pertahankan urutan kemunculan.
+  const categories: string[] = [];
+  for (const r of results) {
+    if (!categories.includes(r.category)) categories.push(r.category);
+  }
+
+  return (
+    <Card className="mb-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle>Uji blokir (dig test)</CardTitle>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={onRefresh}
+          disabled={loading}
+        >
+          {loading ? "Menguji..." : "Uji ulang"}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {!results.length ? (
+          <div className="flex h-20 items-center justify-center text-xs text-muted-foreground">
+            {loading ? "Menguji resolusi DNS..." : "Tidak ada hasil"}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {categories.map((cat) => (
+              <div key={cat}>
+                <div className="mb-2 text-xs font-semibold text-muted-foreground">
+                  {cat}
+                </div>
+                <div className="space-y-1.5">
+                  {results
+                    .filter((r) => r.category === cat)
+                    .map((r) => (
+                      <DigRow key={r.domain} r={r} />
+                    ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DigRow({ r }: { r: DigResult }) {
+  const statusText =
+    r.status === "allowed"
+      ? "lolos"
+      : r.status === "blocked"
+        ? "terblokir"
+        : `error${r.note ? ` (${r.note})` : ""}`;
+
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <div className="min-w-0">
+        <span className="font-medium">{r.label}</span>{" "}
+        <span className="text-muted-foreground">{r.domain}</span>
+        <div className="truncate text-muted-foreground">
+          {r.addresses.length ? r.addresses.join(", ") : "—"} · {r.ms} ms ·
+          harusnya {r.expect === "allow" ? "lolos" : "terblokir"}
+        </div>
+      </div>
+      <Badge
+        variant={
+          r.status === "error"
+            ? "secondary"
+            : r.pass
+              ? "default"
+              : "destructive"
+        }
+      >
+        {r.pass ? "✓ " : r.status === "error" ? "" : "✗ "}
+        {statusText}
+      </Badge>
+    </div>
   );
 }
