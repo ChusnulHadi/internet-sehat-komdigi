@@ -71,7 +71,16 @@ if $DASH_CHANGED; then
     err "Standalone output tidak ditemukan: $STANDALONE"
     exit 1
   fi
+  # Bersihkan deploy lama dulu. Tanpa ini, pada rebuild:
+  #   cp -r static ke /opt/dashboard/.next/static (DEST sudah ada) → nested jadi .../static/static,
+  #   chunk BARU salah path & chunk LAMA nyangkut → server.js baru minta asset baru → CSS/JS 404.
+  rm -rf /opt/dashboard
+  mkdir -p /opt/dashboard
   cp -r "$STANDALONE/." /opt/dashboard/
+  # Standalone TIDAK menyertakan .next/static & public → salin manual, kalau tidak CSS 404.
+  mkdir -p /opt/dashboard/.next
+  [[ -d dashboard/.next/static ]] && cp -r dashboard/.next/static /opt/dashboard/.next/static
+  [[ -d dashboard/public ]]       && cp -r dashboard/public        /opt/dashboard/public
   systemctl restart internet-sehat-dashboard
   ok "Dashboard di-update dan di-restart"
 else
